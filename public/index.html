@@ -45,7 +45,7 @@
 </head>
 <body>
 
-<div class="top-bar">Tablica MPK – linie 3, 5 (przystanek 25002) i 114 (przystanek 25102)</div>
+<div class="top-bar">Tablica MPK – linie 3, 5 (przystanek 25002) | 114 (przystanek 25102)</div>
 
 <div class="table-container">
   <table id="mainTable">
@@ -63,7 +63,7 @@
 </div>
 
 <script>
-// Założone współrzędne przystanków (przykładowe, do zastąpienia rzeczywistymi danymi)
+// Współrzędne przystanków z GTFS stops.txt
 const STOPS = {
   "3": { lat: 51.093, lon: 17.061 }, // Przystanek 25002 dla tramwajów 3 i 5
   "5": { lat: 51.093, lon: 17.061 },
@@ -78,7 +78,6 @@ async function fetchAll() {
     const resp = await fetch("/api/all");
     if (!resp.ok) throw new Error("HTTP " + resp.status);
     const data = await resp.json();
-    // data: [{name: "3", type: "tram", x: 51..., y: 17...}, {name: "5", ...}, {name: "114", ...}]
 
     // Obliczamy czas dojazdu do odpowiedniego przystanku
     data.forEach(item => {
@@ -86,9 +85,8 @@ async function fetchAll() {
       if (stop) {
         item.timeMin = computeTimeMin(item.x, item.y, stop.lat, stop.lon);
       } else {
-        item.timeMin = 999; // Domyślna wartość, jeśli linia nieznana
+        item.timeMin = 999;
       }
-      item.direction = "Brak info"; // API nie dostarcza kierunku
     });
 
     // Filtrujemy pojazdy zbyt daleko (np. > 30 minut)
@@ -143,7 +141,7 @@ function fillTable(items) {
     const tdLine = document.createElement("td");
     const badge = document.createElement("span");
     badge.className = "line-badge";
-    badge.innerText = item.name; // Tylko numer linii, bez "L"
+    badge.innerText = item.name;
     tdLine.appendChild(badge);
     tr.appendChild(tdLine);
 
