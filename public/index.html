@@ -1,134 +1,57 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-  <meta charset="UTF-8">
-  <title>Tablica MPK</title>
-  <style>
-    .top-bar {
-      background-color: #444;
-      color: #fff;
-      padding: 10px;
-      font-size: 1.2em;
-      text-align: center;
-    }
-    .table-container {
-      margin: 20px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    th, td {
-      padding: 8px;
-      border-bottom: 1px solid #ddd;
-      text-align: left;
-    }
-    .line-badge {
-      background-color: #333;
-      color: #fff;
-      padding: 2px 6px;
-      border-radius: 4px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tablica MPK (3, 5 i 114)</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 10px; border: 1px solid black; text-align: center; }
+        th { background: #f1f1f1; }
+        .bus { background: black; color: white; padding: 5px; border-radius: 5px; }
+    </style>
 </head>
 <body>
-  <div class="top-bar">Tablica MPK – linie 3, 5 (przystanek 25002) | 114 (przystanek 25102)</div>
-  <div class="table-container">
-    <table id="mainTable">
-      <thead>
-        <tr>
-          <th>Linia</th>
-          <th>Kierunek</th>
-          <th>Odjazd</th>
-        </tr>
-      </thead>
-      <tbody>
-        <!-- Wiersze będą wstawiane dynamicznie -->
-      </tbody>
+    <h2>Tablica MPK (3, 5 i 114)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Linia</th>
+                <th>Kierunek</th>
+                <th>Odjazd</th>
+            </tr>
+        </thead>
+        <tbody id="data">
+            <tr><td colspan="3">Ładowanie danych...</td></tr>
+        </tbody>
     </table>
-  </div>
 
-  <script>
-    // Współrzędne przystanków (zastąp rzeczywistymi wartościami z GTFS)
-    const STOPS = {
-      '3': { lat: 51.093, lon: 17.061 },   // Przystanek 25002 dla linii 3
-      '5': { lat: 51.093, lon: 17.061 },   // Przystanek 25002 dla linii 5
-      '114': { lat: 51.094, lon: 17.062 }  // Przystanek 25102 dla linii 114
-    };
-    const AVERAGE_SPEED = 30; // Średnia prędkość w km/h
+    <script>
+        async function fetchData() {
+            try {
+                const response = await fetch('/api/trams');
+                const data = await response.json();
 
-    // Funkcja obliczająca odległość Haversine (w km)
-    function haversine(lat1, lon1, lat2, lon2) {
-      const R = 6371; // Promień Ziemi w km
-      const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLon = (lon2 - lon1) * Math.PI / 180;
-      const a = Math.sin(dLat / 2) ** 2 +
-                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                Math.sin(dLon / 2) ** 2;
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c;
-    }
+                const table = document.getElementById('data');
+                table.innerHTML = '';
 
-    // Funkcja pobierająca dane i aktualizująca tabelę
-    async function fetchVehicles() {
-      try {
-        const response = await fetch('/api/vehicles');
-        if (!response.ok) throw new Error('Błąd sieci');
-        const vehicles = await response.json();
+                data.forEach(tram => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><span class="bus">L${tram.name}</span></td>
+                        <td>${tram.type === "tram" ? "Tramwaj" : "Autobus"}</td>
+                        <td>${tram.odjazd} min</td>
+                    `;
+                    table.appendChild(row);
+                });
+            } catch (error) {
+                console.error("Błąd pobierania danych:", error);
+            }
+        }
 
-        // Przetwarzanie danych pojazdów
-        const filteredVehicles = vehicles.map(vehicle => {
-          const line = vehicle.Brygada.split('-')[0];
-          const stop = STOPS[line];
-          if (!stop) return null;
-
-          // Zakładamy, że pola to 'Ostatnia_szer_geo' i 'Ostatnia_dlug_geo'
-          // Sprawdź rzeczywiste nazwy pól w odpowiedzi API
-          const lat = parseFloat(vehicle.Ostatnia_szer_geo);
-          const lon = parseFloat(vehicle.Ostatnia_dlug_geo);
-          if (!lat || !lon) return null;
-
-          const distance = haversine(lat, lon, stop.lat, stop.lon);
-          const timeMin = Math.round((distance / AVERAGE_SPEED) * 60);
-
-          return {
-            line: line,
-            direction: 'Brak info',
-            timeMin: timeMin
-          };
-        }).filter(v => v && v.timeMin < 30) // Tylko pojazdy < 30 minut
-          .sort((a, b) => a.timeMin - b.timeMin); // Sortuj wg czasu
-
-        updateTable(filteredVehicles);
-      } catch (error) {
-        console.error('Błąd pobierania danych:', error);
-      }
-    }
-
-    // Funkcja aktualizująca tabelę
-    function updateTable(vehicles) {
-      const tbody = document.querySelector('#mainTable tbody');
-      tbody.innerHTML = '';
-
-      if (vehicles.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3">Brak danych</td></tr>';
-        return;
-      }
-
-      vehicles.forEach(vehicle => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td><span class="line-badge">${vehicle.line}</span></td>
-          <td>${vehicle.direction}</td>
-          <td>${vehicle.timeMin} min</td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }
-
-    // Odświeżanie co 30 sekund
-    setInterval(fetchVehicles, 30000);
-    fetchVehicles(); // Początkowe wywołanie
-  </script>
+        fetchData();
+        setInterval(fetchData, 15000);
+    </script>
 </body>
 </html>
