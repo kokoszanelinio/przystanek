@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tablica Tramwajów (linia 3 i 5)</title>
+  <style>
+    body {
+      margin: 0; padding: 0;
+      font-family: Arial, sans-serif;
+      background: #eae6d5; /* lekko beżowe tło */
+    }
+    .top-bar {
+      background: #444;
+      color: #fff;
+      padding: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .top-bar h1 {
+      margin: 0;
+      font-size: 20px;
+    }
+    .last-updated {
+      font-size: 14px;
+    }
+    .content {
+      padding: 15px;
+    }
+    .columns {
+      display: flex;
+      gap: 20px;
+    }
+    .column {
+      flex: 1;
+      background: #f6f5eb;
+      border-radius: 5px;
+      padding: 10px;
+    }
+    .column h2 {
+      margin-top: 0;
+      margin-bottom: 8px;
+      font-size: 18px;
+      background: #ddd;
+      padding: 5px;
+    }
+    .departure-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px;
+      border-bottom: 1px solid #ccc;
+      align-items: center;
+    }
+    .departure-row:last-child {
+      border-bottom: none;
+    }
+    .line-badge {
+      background: #333;
+      color: #fff;
+      border-radius: 4px;
+      padding: 4px 8px;
+      margin-right: 10px;
+      font-weight: bold;
+    }
+    .destination {
+      flex: 1;
+    }
+    .time {
+      font-weight: bold;
+      min-width: 50px;
+      text-align: right;
+    }
+    .error {
+      color: red;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="top-bar">
+    <h1>Tramwaje z Krakowska (linie 3 i 5)</h1>
+    <div id="lastUpdated" class="last-updated">Ostatnia aktualizacja: --:--</div>
+  </div>
+
+  <div class="content">
+    <div class="columns">
+      <!-- Kolumna dla linii 3 -->
+      <div class="column">
+        <h2>Linia 3</h2>
+        <div id="line3List"></div>
+      </div>
+      <!-- Kolumna dla linii 5 -->
+      <div class="column">
+        <h2>Linia 5</h2>
+        <div id="line5List"></div>
+      </div>
+    </div>
+
+    <div id="errorMsg" class="error"></div>
+  </div>
+
+<script>
+/*
+  STAŁE KONFIGURACYJNE
+*/
+// Bezpośredni link do pliku CSV z lokalizacją pojazdów:
+const CSV_URL = "https://www.wroclaw.pl/open-data/datastore/dump/17308285-3977-42f7-81b7-fdd168c210a2";
+
+// Koordynaty przystanku KRAKOWSKA
+const STOP_LAT = 51.0930579;
+const STOP_LON = 17.0605519;
+
+// Założona średnia prędkość tramwaju (km/h)
+const AVERAGE_SPEED_KMH = 18; // ~ 5 m/s
+
+// Częstotliwość odświeżania w milisekundach
+const REFRESH_INTERVAL = 5000; // 5 sekund
+
+/*
+  FUNKCJA: fetchCSV
+  -----------------
+  Pobiera treść CSV (może być zablokowana przez CORS, jeśli nie włączysz wtyczki 
+  w Chrome lub nie użyjesz serwera proxy)
+*/
+async function fetchCSV() {
+  const response = await fetch(CSV_URL);
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  return await response.text();
+}
+
+/*
+  FUNKCJA: parseCSV
+  -----------------
+  Zamienia surowy tekst CSV na tablicę obiektów:
+    - Pierwszy wiersz = nagłówki kolumn
+    - Kolejne wiersze = dane
+  Zwraca tablicę obiektów, np. [ {Nazwa_Linii: "3", Lat: "...", Lon: "...", ...}, {...} ]
+*/
+function parseCSV(csvText) {
+  const lines = csvText.split(/\r?\n/).filter(line => line.trim().length > 0);
+  if (lines.length < 2) return [];
+
+  // Pierwszy wiersz – nagłówki
+  const headers = lines[0].split(',');
+
+  const data = [];
+  for (let i = 1; i < lines.length; i++) {
+    const row = lines[i].split(',');
+    const obj = {};
+    headers.forEach((h, idx) => {
+      const headerClean = h.replace(/"/g, '').trim();
+      const value = (row[idx] || '').replace(/"/g, '').trim();
+      obj[headerClean] = value;
+    });
+    data.push(obj);
+  }
+  return data;
+}
+
+/*
+  FUNKCJA: computeDistanceKm
+  --------------------------
+  Liczy dystans w kilometrach między dwoma punktami (lat1, lon1) i (lat2, lon2)
+  używając wzoru Haversine. Zwraca liczbę w km.
+*/
+function computeDistanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371; // promień Ziemi w km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+/*
+  FUNKCJA: updateTable
+  --------------------
+  1) Pobiera CSV
+  2) Parsuje
+  3) Filtruje do linii 3 i 5
+  4) Liczy czas dojazdu do Krakowskiej (bardzo uproszczony!)
+  5) Wyświetla w 2 kolumnach
+*/
+async function updateTable() {
+  try {
+    const csvText = await fetchCSV();
+    const allRows = parseCSV(csvText);
+
+    // UWAGA: W pliku CSV musisz mieć kolumny np.:
+    // "Nazwa_Linii", "Lat", "Lon", ... 
+    // Sprawdź realne nazwy i DOSTOSUJ jeśli są inne!
+
+    // 1. Filtrujemy TYLKO TRAMWAJE z linii 3 i 5
+    //    (zakładam, że w "Nazwa_Linii" jest "3" lub "5")
+    const filtered3 = [];
+    const filtered5 = [];
+
+    allRows.forEach(row => {
+      const linia = row["Nazwa_Linii"];  // sprawdź czy w CSV jest "Nazwa_Linii" czy "Linia"
+      const latStr = row["Lat"];        // czy w CSV jest "Lat" czy "Latitude"?
+      const lonStr = row["Lon"];        // czy w CSV jest "Lon" czy "Longitude"?
+
+      if (!linia || !latStr || !lonStr) {
+        return; // pomiń wiersz, bo brakuje danych
+      }
+
+      // Konwersja do liczb
+      const lat = parseFloat(latStr);
+      const lon = parseFloat(lonStr);
+      if (isNaN(lat) || isNaN(lon)) {
+        return;
+      }
+
+      // Liczymy dystans w km do przystanku
+      const distKm = computeDistanceKm(lat, lon, STOP_LAT, STOP_LON);
+
+      // Szybkie wyliczenie czasu (minuty) = (dystans / prędkość) * 60
+      // prędkość w km/h => w km/min mnożymy przez 60
+      const timeMin = (distKm / AVERAGE_SPEED_KMH) * 60;
+      const timeRounded = Math.round(timeMin);
+
+      // Zapisujemy obiekt (np. { linia: 3, time: 5, ... })
+      const item = {
+        linia: linia,
+        distanceKm: distKm,
+        timeMin: timeRounded
+      };
+
+      // Przydzielamy do tablicy 3 lub 5
+      if (linia === "3") {
+        filtered3.push(item);
+      } else if (linia === "5") {
+        filtered5.push(item);
+      }
+    });
+
+    // 2. Sortujemy rosnąco po czasie dojazdu
+    filtered3.sort((a,b) => a.timeMin - b.timeMin);
+    filtered5.sort((a,b) => a.timeMin - b.timeMin);
+
+    // 3. Wyświetlamy w kolumnach
+    fillColumn("line3List", filtered3, "3");
+    fillColumn("line5List", filtered5, "5");
+
+    // 4. Ustawiamy czas ostatniej aktualizacji
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2,'0');
+    const mm = String(now.getMinutes()).padStart(2,'0');
+    document.getElementById("lastUpdated").textContent = `Ostatnia aktualizacja: ${hh}:${mm}`;
+
+    // Czyścimy ewentualny błąd
+    document.getElementById("errorMsg").textContent = "";
+  } catch (err) {
+    console.error(err);
+    document.getElementById("errorMsg").textContent = "Błąd: " + err.message;
+  }
+}
+
+/*
+  FUNKCJA: fillColumn
+  -------------------
+  Wypełnia określony kontener (np. #line3List) listą odjazdów
+  w formie "L4 Carlingford ... 2 min" – ale w tym wypadku mamy
+  w obiekcie { linia: "3", timeMin: 7 }.
+
+  W docelowej wersji można np. dodać "kierunek" – ale w CSV go raczej nie ma.
+*/
+function fillColumn(containerId, items, lineNumber) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = "";
+
+  if (items.length === 0) {
+    container.innerHTML = "<p>Brak danych</p>";
+    return;
+  }
+
+  items.forEach(item => {
+    const rowDiv = document.createElement("div");
+    rowDiv.className = "departure-row";
+
+    // "badge" z numerem linii
+    const badgeSpan = document.createElement("span");
+    badgeSpan.className = "line-badge";
+    badgeSpan.textContent = "L" + item.linia;
+
+    // "kierunek" – w CSV brak, więc zostawiamy np. "Kierunek?"
+    const destSpan = document.createElement("span");
+    destSpan.className = "destination";
+    destSpan.textContent = "Kierunek?"; // brak w CSV
+
+    // Czas dojazdu
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "time";
+    timeSpan.textContent = item.timeMin + " min";
+
+    rowDiv.appendChild(badgeSpan);
+    rowDiv.appendChild(destSpan);
+    rowDiv.appendChild(timeSpan);
+
+    container.appendChild(rowDiv);
+  });
+}
+
+/*
+  Po załadowaniu strony:
+  - Uruchamiamy updateTable
+  - Odświeżamy co REFRESH_INTERVAL ms
+*/
+window.addEventListener("DOMContentLoaded", () => {
+  updateTable();
+  setInterval(updateTable, REFRESH_INTERVAL);
+});
+</script>
+</body>
+</html>
