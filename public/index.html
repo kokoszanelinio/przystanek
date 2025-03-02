@@ -1,168 +1,134 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-  <meta charset="UTF-8" />
-  <title>Tablica MPK – linie 3, 5 i 114</title>
+  <meta charset="UTF-8">
+  <title>Tablica MPK</title>
   <style>
-    body {
-      margin: 0; padding: 0;
-      font-family: Arial, sans-serif;
-      background: #f0f0f0;
-    }
     .top-bar {
-      background: #444;
+      background-color: #444;
       color: #fff;
       padding: 10px;
-      font-size: 20px;
+      font-size: 1.2em;
+      text-align: center;
     }
     .table-container {
-      background: #fff;
       margin: 20px;
-      border-radius: 4px;
-      overflow: hidden;
     }
     table {
       width: 100%;
       border-collapse: collapse;
     }
     th, td {
-      padding: 12px;
+      padding: 8px;
       border-bottom: 1px solid #ddd;
       text-align: left;
     }
-    th {
-      background: #eee;
-    }
     .line-badge {
-      display: inline-block;
-      background: #333;
+      background-color: #333;
       color: #fff;
-      padding: 4px 8px;
+      padding: 2px 6px;
       border-radius: 4px;
-      font-weight: bold;
     }
   </style>
 </head>
 <body>
+  <div class="top-bar">Tablica MPK – linie 3, 5 (przystanek 25002) | 114 (przystanek 25102)</div>
+  <div class="table-container">
+    <table id="mainTable">
+      <thead>
+        <tr>
+          <th>Linia</th>
+          <th>Kierunek</th>
+          <th>Odjazd</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Wiersze będą wstawiane dynamicznie -->
+      </tbody>
+    </table>
+  </div>
 
-<div class="top-bar">Tablica MPK – linie 3, 5 (przystanek 25002) | 114 (przystanek 25102)</div>
+  <script>
+    // Współrzędne przystanków (zastąp rzeczywistymi wartościami z GTFS)
+    const STOPS = {
+      '3': { lat: 51.093, lon: 17.061 },   // Przystanek 25002 dla linii 3
+      '5': { lat: 51.093, lon: 17.061 },   // Przystanek 25002 dla linii 5
+      '114': { lat: 51.094, lon: 17.062 }  // Przystanek 25102 dla linii 114
+    };
+    const AVERAGE_SPEED = 30; // Średnia prędkość w km/h
 
-<div class="table-container">
-  <table id="mainTable">
-    <thead>
-      <tr>
-        <th>Linia</th>
-        <th>Kierunek</th>
-        <th>Odjazd</th>
-      </tr>
-    </thead>
-    <tbody>
-      <!-- Wypełniamy dynamicznie -->
-    </tbody>
-  </table>
-</div>
+    // Funkcja obliczająca odległość Haversine (w km)
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371; // Promień Ziemi w km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) ** 2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
 
-<script>
-// Współrzędne przystanków z GTFS stops.txt
-const STOPS = {
-  "3": { lat: 51.093, lon: 17.061 }, // Przystanek 25002 dla tramwajów 3 i 5
-  "5": { lat: 51.093, lon: 17.061 },
-  "114": { lat: 51.094, lon: 17.062 } // Przystanek 25102 dla autobusu 114
-};
-const AVERAGE_SPEED_KMH = 18; // Średnia prędkość w km/h
-const REFRESH_INTERVAL = 30000; // Odświeżanie co 30 sekund
+    // Funkcja pobierająca dane i aktualizująca tabelę
+    async function fetchVehicles() {
+      try {
+        const response = await fetch('/api/vehicles');
+        if (!response.ok) throw new Error('Błąd sieci');
+        const vehicles = await response.json();
 
-// Pobieramy dane z /api/all
-async function fetchAll() {
-  try {
-    const resp = await fetch("/api/all");
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
-    const data = await resp.json();
+        // Przetwarzanie danych pojazdów
+        const filteredVehicles = vehicles.map(vehicle => {
+          const line = vehicle.Brygada.split('-')[0];
+          const stop = STOPS[line];
+          if (!stop) return null;
 
-    // Obliczamy czas dojazdu do odpowiedniego przystanku
-    data.forEach(item => {
-      const stop = STOPS[item.name];
-      if (stop) {
-        item.timeMin = computeTimeMin(item.x, item.y, stop.lat, stop.lon);
-      } else {
-        item.timeMin = 999;
+          // Zakładamy, że pola to 'Ostatnia_szer_geo' i 'Ostatnia_dlug_geo'
+          // Sprawdź rzeczywiste nazwy pól w odpowiedzi API
+          const lat = parseFloat(vehicle.Ostatnia_szer_geo);
+          const lon = parseFloat(vehicle.Ostatnia_dlug_geo);
+          if (!lat || !lon) return null;
+
+          const distance = haversine(lat, lon, stop.lat, stop.lon);
+          const timeMin = Math.round((distance / AVERAGE_SPEED) * 60);
+
+          return {
+            line: line,
+            direction: 'Brak info',
+            timeMin: timeMin
+          };
+        }).filter(v => v && v.timeMin < 30) // Tylko pojazdy < 30 minut
+          .sort((a, b) => a.timeMin - b.timeMin); // Sortuj wg czasu
+
+        updateTable(filteredVehicles);
+      } catch (error) {
+        console.error('Błąd pobierania danych:', error);
       }
-    });
+    }
 
-    // Filtrujemy pojazdy zbyt daleko (np. > 30 minut)
-    const filteredData = data.filter(item => item.timeMin < 30);
+    // Funkcja aktualizująca tabelę
+    function updateTable(vehicles) {
+      const tbody = document.querySelector('#mainTable tbody');
+      tbody.innerHTML = '';
 
-    // Sortujemy rosnąco po czasie dojazdu
-    filteredData.sort((a, b) => a.timeMin - b.timeMin);
+      if (vehicles.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3">Brak danych</td></tr>';
+        return;
+      }
 
-    fillTable(filteredData);
-  } catch (err) {
-    console.error("Błąd:", err);
-  }
-}
+      vehicles.forEach(vehicle => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><span class="line-badge">${vehicle.line}</span></td>
+          <td>${vehicle.direction}</td>
+          <td>${vehicle.timeMin} min</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
 
-// Obliczamy czas dojazdu w minutach
-function computeTimeMin(lat, lon, stopLat, stopLon) {
-  if (!lat || !lon) return 999;
-  const dist = haversine(lat, lon, stopLat, stopLon);
-  return Math.round((dist / AVERAGE_SPEED_KMH) * 60);
-}
-
-// Wzór Haversine do obliczania odległości
-function haversine(lat1, lon1, lat2, lon2) {
-  const R = 6371; // Promień Ziemi w km
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-// Wypełniamy tabelę
-function fillTable(items) {
-  const tbody = document.querySelector("#mainTable tbody");
-  tbody.innerHTML = "";
-
-  if (!items.length) {
-    const tr = document.createElement("tr");
-    const td = document.createElement("td");
-    td.colSpan = 3;
-    td.innerText = "Brak danych";
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-    return;
-  }
-
-  items.forEach(item => {
-    const tr = document.createElement("tr");
-
-    // Linia
-    const tdLine = document.createElement("td");
-    const badge = document.createElement("span");
-    badge.className = "line-badge";
-    badge.innerText = item.name;
-    tdLine.appendChild(badge);
-    tr.appendChild(tdLine);
-
-    // Kierunek
-    const tdDir = document.createElement("td");
-    tdDir.innerText = item.direction;
-    tr.appendChild(tdDir);
-
-    // Odjazd
-    const tdTime = document.createElement("td");
-    tdTime.innerText = item.timeMin + " min";
-    tr.appendChild(tdTime);
-
-    tbody.appendChild(tr);
-  });
-}
-
-// Start i odświeżanie
-fetchAll();
-setInterval(fetchAll, REFRESH_INTERVAL);
-</script>
-
+    // Odświeżanie co 30 sekund
+    setInterval(fetchVehicles, 30000);
+    fetchVehicles(); // Początkowe wywołanie
+  </script>
 </body>
 </html>
