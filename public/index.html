@@ -51,7 +51,7 @@
   </style>
 </head>
 <body>
-  <div class="top-bar">Tablica tramwajów (linia 3 i 5)</div>
+  <div class="top-bar">Tablica tramwajów (linie 3 i 5)</div>
 
   <div class="content">
     <div class="column">
@@ -65,24 +65,22 @@
   </div>
 
   <script>
-    // Koordynaty przystanku Krakowska
+    // Koordynaty Krakowska
     const STOP_LAT = 51.0930579;
     const STOP_LON = 17.0605519;
-    const AVERAGE_SPEED_KMH = 18; // Uproszczona prędkość do obliczeń
-    const REFRESH_INTERVAL = 30000; // Odświeżanie co 30s
+    const AVERAGE_SPEED_KMH = 18; 
+    const REFRESH_INTERVAL = 30000;
 
-    // Funkcja pobierająca tramwaje z /api/trams
     async function fetchTrams() {
       try {
         const resp = await fetch("/api/trams");
-        const data = await resp.json();
-        // data = [{name: "3", type: "tram", x: 51.12, y: 17.06, ...}, ...]
+        if (!resp.ok) throw new Error("HTTP error " + resp.status);
+        const data = await resp.json(); 
+        // data: [{name: "3", x: 51..., y: 17...}, ...]
 
-        // Filtrowanie na line3 i line5
         const line3 = data.filter(item => item.name === "3");
         const line5 = data.filter(item => item.name === "5");
 
-        // Obliczamy orientacyjny czas do Krakowskiej
         line3.forEach(item => {
           item.timeMin = computeTimeMin(item.x, item.y);
         });
@@ -90,11 +88,9 @@
           item.timeMin = computeTimeMin(item.x, item.y);
         });
 
-        // Sortujemy
         line3.sort((a,b) => a.timeMin - b.timeMin);
         line5.sort((a,b) => a.timeMin - b.timeMin);
 
-        // Wyświetlamy w kolumnach
         fillColumn("line3", line3);
         fillColumn("line5", line5);
 
@@ -103,31 +99,21 @@
       }
     }
 
-    // Oblicz prowizoryczny czas (dystans w linii prostej / prędkość)
     function computeTimeMin(lat, lon) {
       if (!lat || !lon) return 999;
-      // lat, lon to float, x=51..., y=17...
       const distKm = haversineDistance(lat, lon, STOP_LAT, STOP_LON);
-      const timeMin = (distKm / AVERAGE_SPEED_KMH) * 60;
-      return Math.round(timeMin);
+      return Math.round((distKm / AVERAGE_SPEED_KMH) * 60);
     }
 
-    // Wzór Haversine
     function haversineDistance(lat1, lon1, lat2, lon2) {
-      const R = 6371; // km
-      const dLat = toRad(lat2 - lat1);
-      const dLon = toRad(lon2 - lon1);
-      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-                Math.sin(dLon/2) * Math.sin(dLon/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      return R * c;
-    }
-    function toRad(value) {
-      return value * Math.PI / 180;
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI/180;
+      const dLon = (lon2 - lon1) * Math.PI/180;
+      const a = Math.sin(dLat/2)**2 + 
+                Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    // Wypełnianie HTML-u w danej kolumnie
     function fillColumn(containerId, items) {
       const container = document.getElementById(containerId);
       container.innerHTML = "";
@@ -136,7 +122,6 @@
         container.innerHTML = "<p>Brak danych</p>";
         return;
       }
-
       items.forEach(item => {
         const row = document.createElement("div");
         row.className = "departure-row";
@@ -151,7 +136,6 @@
 
         row.appendChild(badge);
         row.appendChild(time);
-
         container.appendChild(row);
       });
     }
@@ -160,6 +144,5 @@
     fetchTrams();
     setInterval(fetchTrams, REFRESH_INTERVAL);
   </script>
-
 </body>
 </html>
