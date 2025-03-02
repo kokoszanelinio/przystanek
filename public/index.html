@@ -51,4 +51,30 @@
         async function fetchData() {
             try {
                 const response = await fetch('/api/trams');
-                const data =
+                const data = await response.json();
+
+                const tableBody = document.getElementById('timetable');
+                tableBody.innerHTML = '';
+
+                data.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><span class="line-badge">L${item.name}</span></td>
+                        <td>${item.type === 'tram' ? 'Tramwaj' : 'Autobus'}</td>
+                        <td>${Math.floor(Math.random() * 15) + 1} min</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+
+            } catch (error) {
+                console.error('Błąd pobierania danych:', error);
+                document.getElementById('timetable').innerHTML = '<tr><td colspan="3">Błąd ładowania danych</td></tr>';
+            }
+        }
+
+        fetchData();
+        setInterval(fetchData, 30000); // Odświeżanie co 30 sekund
+    </script>
+
+</body>
+</html>
