@@ -1,0 +1,11 @@
+{
+  "name": "mpk-proxy",
+  "version": "1.0.0",
+  "dependencies": {
+    "express": "latest",
+    "node-fetch": "latest"
+  },
+  "scripts": {
+    "start": "node index.js"
+  }
+}
