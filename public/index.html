@@ -5,55 +5,50 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tablica MPK Wrocław</title>
     <style>
-        body { font-family: Arial, sans-serif; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid black; padding: 8px; text-align: left; }
-        th { background-color: #ddd; }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .line-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            background: #333;
+            color: #fff;
+            border-radius: 5px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
-    <h2>Tablica MPK (Tramwaje i Autobusy)</h2>
+
+    <h2>Tablica MPK Wrocław</h2>
     <table>
         <thead>
             <tr>
                 <th>Linia</th>
-                <th>Typ</th>
+                <th>Kierunek</th>
                 <th>Odjazd</th>
             </tr>
         </thead>
-        <tbody id="tramTable"></tbody>
+        <tbody id="timetable">
+            <tr><td colspan="3">Ładowanie danych...</td></tr>
+        </tbody>
     </table>
 
     <script>
         async function fetchData() {
             try {
-                const response = await fetch("/api/trams");
-                const data = await response.json();
-
-                if (!Array.isArray(data)) {
-                    console.error("Nieprawidłowe dane:", data);
-                    return;
-                }
-
-                const table = document.getElementById("tramTable");
-                table.innerHTML = "";
-
-                data.forEach(vehicle => {
-                    const row = document.createElement("tr");
-                    row.innerHTML = `
-                        <td>${vehicle.line}</td>
-                        <td>${vehicle.type === "tram" ? "Tramwaj" : "Autobus"}</td>
-                        <td>~${Math.floor(Math.random() * 10) + 2} min</td>
-                    `;
-                    table.appendChild(row);
-                });
-            } catch (error) {
-                console.error("Błąd pobierania danych:", error);
-            }
-        }
-
-        fetchData();
-        setInterval(fetchData, 30000); // Odświeżanie co 30 sekund
-    </script>
-</body>
-</html>
+                const response = await fetch('/api/trams');
+                const data =
