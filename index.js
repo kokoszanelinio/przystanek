@@ -1,33 +1,37 @@
 const express = require('express');
-const fetch = require('node-fetch');
+const axios = require('axios');
+const cors = require('cors');
 
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-// Obsługa plików statycznych z folderu 'public'
-app.use(express.static('public'));
+app.use(cors());
 
-// Endpoint pobierający dane pojazdów dla linii 3, 5 i 114
-app.get('/api/vehicles', async (req, res) => {
-  // Zapytanie SQL do API CKAN, filtrujące pojazdy dla linii 3, 5 i 114
-  const sql = `SELECT * FROM "17308285-3977-42f7-81b7-fdd168c210a2" WHERE "Brygada" LIKE '3-%' OR "Brygada" LIKE '5-%' OR "Brygada" LIKE '114-%'`;
-  const url = `https://www.wroclaw.pl/open-data/api/action/datastore_search_sql?sql=${encodeURIComponent(sql)}`;
+const WROCLAW_API_URL = "https://www.wroclaw.pl/open-data/api/action/datastore_search";
+const RESOURCE_ID = "17308285-3977-42f7-81b7-fdd168c210a2";
 
-  try {
-    const response = await fetch(url);
-    const data = await response.json();
+app.get('/api/trams', async (req, res) => {
+    try {
+        const response = await axios.get(`${WROCLAW_API_URL}?resource_id=${RESOURCE_ID}&limit=1000`);
+        const vehicles = response.data.result.records;
 
-    if (data.success) {
-      // Zwróć rekordy pojazdów
-      res.json(data.result.records);
-    } else {
-      res.status(500).json({ error: data.error });
+        const filteredVehicles = vehicles.map(v => ({
+            name: v.Linia,
+            type: v.TypPojazdu.toLowerCase(),
+            x: v.Lon,
+            y: v.Lat,
+            odjazd: Math.floor(Math.random() * 20) + 1
+        }));
+
+        res.json(filteredVehicles);
+    } catch (error) {
+        console.error("Błąd pobierania danych:", error);
+        res.status(500).json({ error: "Nie udało się pobrać danych z API" });
     }
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
 });
 
-const PORT = process.env.PORT || 3000;
+app.use(express.static('public'));
+
 app.listen(PORT, () => {
-  console.log(`Serwer działa na porcie ${PORT}`);
+    console.log(`Serwer działa na http://localhost:${PORT}`);
 });
