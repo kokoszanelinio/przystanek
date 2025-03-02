@@ -1,13 +1,14 @@
 {
-  "name": "mpk-table",
+  "name": "wroclaw-mpk",
   "version": "1.0.0",
-  "description": "Real-time public transport info for Wroclaw",
+  "description": "Serwer proxy do pobierania danych o tramwajach i autobusach we Wrocławiu",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.17.1",
-    "node-fetch": "^2.6.1"
+    "axios": "^1.4.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.2"
   }
 }
