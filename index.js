@@ -1,76 +1,33 @@
-const express = require("express");
-const fetch = require("node-fetch");
-const fs = require("fs");
-const csv = require("csv-parser");
+const express = require('express');
+const fetch = require('node-fetch');
+
 const app = express();
 
-app.use(express.static("public"));
+// Obsługa plików statycznych z folderu 'public'
+app.use(express.static('public'));
 
-// Wczytanie danych GTFS
-let stops = {};
-let trips = {};
-let routes = {};
+// Endpoint pobierający dane pojazdów dla linii 3, 5 i 114
+app.get('/api/vehicles', async (req, res) => {
+  // Zapytanie SQL do API CKAN, filtrujące pojazdy dla linii 3, 5 i 114
+  const sql = `SELECT * FROM "17308285-3977-42f7-81b7-fdd168c210a2" WHERE "Brygada" LIKE '3-%' OR "Brygada" LIKE '5-%' OR "Brygada" LIKE '114-%'`;
+  const url = `https://www.wroclaw.pl/open-data/api/action/datastore_search_sql?sql=${encodeURIComponent(sql)}`;
 
-// Wczytanie stops.txt
-fs.createReadStream("gtfs/stops.txt")
-  .pipe(csv())
-  .on("data", (row) => {
-    stops[row.stop_id] = {
-      lat: parseFloat(row.stop_lat),
-      lon: parseFloat(row.stop_lon),
-      name: row.stop_name
-    };
-  })
-  .on("end", () => console.log("Stops loaded"));
-
-// Wczytanie trips.txt
-fs.createReadStream("gtfs/trips.txt")
-  .pipe(csv())
-  .on("data", (row) => {
-    trips[row.trip_id] = {
-      route_id: row.route_id,
-      direction: row.trip_headsign
-    };
-  })
-  .on("end", () => console.log("Trips loaded"));
-
-// Wczytanie routes.txt
-fs.createReadStream("gtfs/routes.txt")
-  .pipe(csv())
-  .on("data", (row) => {
-    routes[row.route_id] = row.route_long_name;
-  })
-  .on("end", () => console.log("Routes loaded"));
-
-// Endpoint /api/all
-app.get("/api/all", async (req, res) => {
   try {
-    const resp = await fetch("https://mpk.wroc.pl/bus_position", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        "busList[bus][]": "3",
-        "busList[bus][]": "5",
-        "busList[bus][]": "114"
-      })
-    });
-    let data = await resp.json();
+    const response = await fetch(url);
+    const data = await response.json();
 
-    // Dodanie kierunku z GTFS (uproszczone)
-    data = data.map(vehicle => {
-      const routeId = vehicle.name; // np. "3"
-      const direction = routes[routeId] ? routes[routeId] : "Brak info";
-      return {
-        ...vehicle,
-        direction: direction
-      };
-    });
-
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.toString() });
+    if (data.success) {
+      // Zwróć rekordy pojazdów
+      res.json(data.result.records);
+    } else {
+      res.status(500).json({ error: data.error });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Serwer działa na porcie ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Serwer działa na porcie ${PORT}`);
+});
