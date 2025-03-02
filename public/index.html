@@ -2,11 +2,10 @@
 <html lang="pl">
 <head>
   <meta charset="UTF-8" />
-  <title>Tablica MPK (linie 3 i 5)</title>
+  <title>Tablica MPK – linie 3, 5 i 114</title>
   <style>
     body {
-      margin: 0; 
-      padding: 0;
+      margin: 0; padding: 0;
       font-family: Arial, sans-serif;
       background: #f0f0f0;
     }
@@ -16,133 +15,145 @@
       padding: 10px;
       font-size: 20px;
     }
-    .content {
-      display: flex;
-      gap: 20px;
-      padding: 20px;
-    }
-    .column {
-      flex: 1;
+    .table-container {
       background: #fff;
+      margin: 20px;
       border-radius: 4px;
-      padding: 10px;
+      overflow: hidden;
     }
-    .departure-row {
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 12px;
       border-bottom: 1px solid #ddd;
-      padding: 6px;
-      display: flex;
-      justify-content: space-between;
+      text-align: left;
     }
-    .departure-row:last-child {
-      border-bottom: none;
+    th {
+      background: #eee;
     }
     .line-badge {
+      display: inline-block;
       background: #333;
       color: #fff;
       padding: 4px 8px;
       border-radius: 4px;
       font-weight: bold;
     }
-    .time {
-      font-weight: bold;
-      min-width: 60px;
-      text-align: right;
-    }
   </style>
 </head>
 <body>
-  <div class="top-bar">Tablica tramwajów (linie 3 i 5)</div>
 
-  <div class="content">
-    <div class="column">
-      <h2>Linia 3</h2>
-      <div id="line3"></div>
-    </div>
-    <div class="column">
-      <h2>Linia 5</h2>
-      <div id="line5"></div>
-    </div>
-  </div>
+<div class="top-bar">Tablica MPK (3, 5 i 114)</div>
 
-  <script>
-    // Koordynaty Krakowska
-    const STOP_LAT = 51.0930579;
-    const STOP_LON = 17.0605519;
-    const AVERAGE_SPEED_KMH = 18; 
-    const REFRESH_INTERVAL = 30000;
+<div class="table-container">
+  <table id="mainTable">
+    <thead>
+      <tr>
+        <th>Linia</th>
+        <th>Kierunek</th>
+        <th>Odjazd</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- wypełniamy dynamicznie -->
+    </tbody>
+  </table>
+</div>
 
-    async function fetchTrams() {
-      try {
-        const resp = await fetch("/api/trams");
-        if (!resp.ok) throw new Error("HTTP error " + resp.status);
-        const data = await resp.json(); 
-        // data: [{name: "3", x: 51..., y: 17...}, ...]
+<script>
+// Koordynaty przystanku Krakowska
+const STOP_LAT = 51.0930579;
+const STOP_LON = 17.0605519;
+const AVERAGE_SPEED_KMH = 18;
+const REFRESH_INTERVAL = 30000;
 
-        const line3 = data.filter(item => item.name === "3");
-        const line5 = data.filter(item => item.name === "5");
+// 1. Pobieramy z /api/all
+async function fetchAll() {
+  try {
+    const resp = await fetch("/api/all");
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const data = await resp.json();
+    // data: [{name:"3", type:"tram", x:51..., y:17...}, {name:"5",...}, {name:"114",...}]
 
-        line3.forEach(item => {
-          item.timeMin = computeTimeMin(item.x, item.y);
-        });
-        line5.forEach(item => {
-          item.timeMin = computeTimeMin(item.x, item.y);
-        });
+    // Policz czas dojazdu
+    data.forEach(item => {
+      item.timeMin = computeTimeMin(item.x, item.y);
+      // Kierunku brak w JSON, więc dajemy "?" albo coś
+      item.direction = "Brak info";
+    });
 
-        line3.sort((a,b) => a.timeMin - b.timeMin);
-        line5.sort((a,b) => a.timeMin - b.timeMin);
+    // Sortujemy rosnąco po timeMin
+    data.sort((a,b) => a.timeMin - b.timeMin);
 
-        fillColumn("line3", line3);
-        fillColumn("line5", line5);
+    fillTable(data);
+  } catch (err) {
+    console.error("Błąd:", err);
+  }
+}
 
-      } catch (err) {
-        console.error("Błąd pobierania tramwajów:", err);
-      }
-    }
+function computeTimeMin(lat, lon) {
+  if (!lat || !lon) return 999;
+  const dist = haversine(lat, lon, STOP_LAT, STOP_LON);
+  return Math.round( (dist / AVERAGE_SPEED_KMH) * 60 );
+}
 
-    function computeTimeMin(lat, lon) {
-      if (!lat || !lon) return 999;
-      const distKm = haversineDistance(lat, lon, STOP_LAT, STOP_LON);
-      return Math.round((distKm / AVERAGE_SPEED_KMH) * 60);
-    }
+// Wzór haversine
+function haversine(lat1, lon1, lat2, lon2) {
+  const R=6371;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+            Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
 
-    function haversineDistance(lat1, lon1, lat2, lon2) {
-      const R = 6371;
-      const dLat = (lat2 - lat1) * Math.PI/180;
-      const dLon = (lon2 - lon1) * Math.PI/180;
-      const a = Math.sin(dLat/2)**2 + 
-                Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    }
+// 2. Wypełniamy tabelę
+function fillTable(items) {
+  const tbody = document.querySelector("#mainTable tbody");
+  tbody.innerHTML = "";
 
-    function fillColumn(containerId, items) {
-      const container = document.getElementById(containerId);
-      container.innerHTML = "";
+  if (!items.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 3;
+    td.innerText = "Brak danych";
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
 
-      if (!items.length) {
-        container.innerHTML = "<p>Brak danych</p>";
-        return;
-      }
-      items.forEach(item => {
-        const row = document.createElement("div");
-        row.className = "departure-row";
+  items.forEach(item => {
+    const tr = document.createElement("tr");
 
-        const badge = document.createElement("span");
-        badge.className = "line-badge";
-        badge.innerText = "L" + item.name;
+    // Linia
+    const tdLine = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = "line-badge";
+    badge.innerText = "L" + item.name; 
+    tdLine.appendChild(badge);
+    tr.appendChild(tdLine);
 
-        const time = document.createElement("span");
-        time.className = "time";
-        time.innerText = item.timeMin + " min";
+    // Kierunek
+    const tdDir = document.createElement("td");
+    tdDir.innerText = item.direction; // brak w JSON, dajemy cokolwiek
+    tr.appendChild(tdDir);
 
-        row.appendChild(badge);
-        row.appendChild(time);
-        container.appendChild(row);
-      });
-    }
+    // Odjazd
+    const tdTime = document.createElement("td");
+    tdTime.innerText = item.timeMin + " min";
+    tr.appendChild(tdTime);
 
-    // Start
-    fetchTrams();
-    setInterval(fetchTrams, REFRESH_INTERVAL);
-  </script>
+    tbody.appendChild(tr);
+  });
+}
+
+// Start
+fetchAll();
+setInterval(fetchAll, REFRESH_INTERVAL);
+</script>
+
 </body>
 </html>
