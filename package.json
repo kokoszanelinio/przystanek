@@ -1,11 +1,13 @@
 {
-  "name": "mpk-proxy",
+  "name": "mpk-table",
   "version": "1.0.0",
-  "dependencies": {
-    "express": "latest",
-    "node-fetch": "^2.6.7"
-  },
+  "description": "Real-time public transport info for Wroclaw",
+  "main": "index.js",
   "scripts": {
     "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "node-fetch": "^2.6.1"
   }
 }
