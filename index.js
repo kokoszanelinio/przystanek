@@ -6,14 +6,43 @@ const app = express();
 
 app.use(express.static("public"));
 
-// Wczytanie GTFS
-let trips = [];
-fs.createReadStream("trips.txt")
+// Wczytanie danych GTFS
+let stops = {};
+let trips = {};
+let routes = {};
+
+// Wczytanie stops.txt
+fs.createReadStream("gtfs/stops.txt")
   .pipe(csv())
-  .on("data", (row) => trips.push(row))
+  .on("data", (row) => {
+    stops[row.stop_id] = {
+      lat: parseFloat(row.stop_lat),
+      lon: parseFloat(row.stop_lon),
+      name: row.stop_name
+    };
+  })
+  .on("end", () => console.log("Stops loaded"));
+
+// Wczytanie trips.txt
+fs.createReadStream("gtfs/trips.txt")
+  .pipe(csv())
+  .on("data", (row) => {
+    trips[row.trip_id] = {
+      route_id: row.route_id,
+      direction: row.trip_headsign
+    };
+  })
   .on("end", () => console.log("Trips loaded"));
 
-// API dla wszystkich linii
+// Wczytanie routes.txt
+fs.createReadStream("gtfs/routes.txt")
+  .pipe(csv())
+  .on("data", (row) => {
+    routes[row.route_id] = row.route_long_name;
+  })
+  .on("end", () => console.log("Routes loaded"));
+
+// Endpoint /api/all
 app.get("/api/all", async (req, res) => {
   try {
     const resp = await fetch("https://mpk.wroc.pl/bus_position", {
@@ -27,12 +56,13 @@ app.get("/api/all", async (req, res) => {
     });
     let data = await resp.json();
 
-    // Dodanie kierunków z GTFS
+    // Dodanie kierunku z GTFS (uproszczone)
     data = data.map(vehicle => {
-      const trip = trips.find(t => t.route_id === vehicle.name);
+      const routeId = vehicle.name; // np. "3"
+      const direction = routes[routeId] ? routes[routeId] : "Brak info";
       return {
         ...vehicle,
-        direction: trip ? trip.trip_headsign : "Brak info"
+        direction: direction
       };
     });
 
@@ -42,4 +72,5 @@ app.get("/api/all", async (req, res) => {
   }
 });
 
-app.listen(3000, () => console.log("Serwer działa na porcie 3000"));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Serwer działa na porcie ${PORT}`));
