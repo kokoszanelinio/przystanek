@@ -1,12 +1,19 @@
 const express = require("express");
-const fetch = require("node-fetch"); // v2.x
-const path = require("path");
+const fetch = require("node-fetch");
+const fs = require("fs");
+const csv = require("csv-parser");
 const app = express();
 
-// Serwujemy statyczny folder "public"
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static("public"));
 
-// Endpoint /api/all – 3, 5, 114 w jednej paczce
+// Wczytanie GTFS
+let trips = [];
+fs.createReadStream("trips.txt")
+  .pipe(csv())
+  .on("data", (row) => trips.push(row))
+  .on("end", () => console.log("Trips loaded"));
+
+// API dla wszystkich linii
 app.get("/api/all", async (req, res) => {
   try {
     const resp = await fetch("https://mpk.wroc.pl/bus_position", {
@@ -18,16 +25,21 @@ app.get("/api/all", async (req, res) => {
         "busList[bus][]": "114"
       })
     });
-    const data = await resp.json();
-    // data = [{name: "3", type: "tram", x: 51..., y: 17...}, {...}, {...}]
+    let data = await resp.json();
+
+    // Dodanie kierunków z GTFS
+    data = data.map(vehicle => {
+      const trip = trips.find(t => t.route_id === vehicle.name);
+      return {
+        ...vehicle,
+        direction: trip ? trip.trip_headsign : "Brak info"
+      };
+    });
+
     res.json(data);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: err.toString() });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("Serwer działa na porcie", PORT);
-});
+app.listen(3000, () => console.log("Serwer działa na porcie 3000"));
