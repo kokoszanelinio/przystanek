@@ -2,7 +2,7 @@
 <html lang="pl">
 <head>
   <meta charset="UTF-8" />
-  <title>Tablica Tramwajów (linia 3 i 5)</title>
+  <title>Tablica Tramwajów (linie 3 i 5) - GitHub Pages</title>
   <style>
     body {
       margin: 0; padding: 0;
@@ -96,16 +96,20 @@
         <div id="line5List"></div>
       </div>
     </div>
-
     <div id="errorMsg" class="error"></div>
   </div>
 
 <script>
 /*
-  STAŁE KONFIGURACYJNE
+  -------------------------------
+  1. KONFIGURACJA
+  -------------------------------
 */
-// Bezpośredni link do pliku CSV z lokalizacją pojazdów:
+// Oryginalny CSV z Wrocław Open Data (bezpośredni link):
 const CSV_URL = "https://www.wroclaw.pl/open-data/datastore/dump/17308285-3977-42f7-81b7-fdd168c210a2";
+
+// Korzystamy z proxy AllOrigins:
+const PROXY_URL = "https://api.allorigins.win/get?url=" + encodeURIComponent(CSV_URL);
 
 // Koordynaty przystanku KRAKOWSKA
 const STOP_LAT = 51.0930579;
@@ -114,39 +118,44 @@ const STOP_LON = 17.0605519;
 // Założona średnia prędkość tramwaju (km/h)
 const AVERAGE_SPEED_KMH = 18; // ~ 5 m/s
 
-// Częstotliwość odświeżania w milisekundach
+// Częstotliwość odświeżania (ms)
 const REFRESH_INTERVAL = 5000; // 5 sekund
 
 /*
-  FUNKCJA: fetchCSV
-  -----------------
-  Pobiera treść CSV (może być zablokowana przez CORS, jeśli nie włączysz wtyczki 
-  w Chrome lub nie użyjesz serwera proxy)
+  -------------------------------
+  2. POBIERANIE CSV PRZEZ PROXY
+  -------------------------------
+  AllOrigins zwraca JSON w formacie:
+  {
+    "contents": "TU JEST ZAWARTOŚĆ CSV",
+    "status": { ... }
+  }
+  Więc musimy zrobić fetch(PROXY_URL), odczytać .json(), 
+  a potem z .contents wziąć surowy CSV.
 */
-async function fetchCSV() {
-  const response = await fetch(CSV_URL);
+async function fetchCSVviaProxy() {
+  const response = await fetch(PROXY_URL);
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
   }
-  return await response.text();
+  const data = await response.json();
+  // data.contents to surowy tekst CSV
+  return data.contents;
 }
 
 /*
-  FUNKCJA: parseCSV
-  -----------------
-  Zamienia surowy tekst CSV na tablicę obiektów:
-    - Pierwszy wiersz = nagłówki kolumn
-    - Kolejne wiersze = dane
-  Zwraca tablicę obiektów, np. [ {Nazwa_Linii: "3", Lat: "...", Lon: "...", ...}, {...} ]
+  -------------------------------
+  3. parseCSV
+  -------------------------------
+  Zamiana surowego tekstu CSV na tablicę obiektów
 */
 function parseCSV(csvText) {
   const lines = csvText.split(/\r?\n/).filter(line => line.trim().length > 0);
   if (lines.length < 2) return [];
 
-  // Pierwszy wiersz – nagłówki
   const headers = lines[0].split(',');
+  const results = [];
 
-  const data = [];
   for (let i = 1; i < lines.length; i++) {
     const row = lines[i].split(',');
     const obj = {};
@@ -155,106 +164,83 @@ function parseCSV(csvText) {
       const value = (row[idx] || '').replace(/"/g, '').trim();
       obj[headerClean] = value;
     });
-    data.push(obj);
+    results.push(obj);
   }
-  return data;
+  return results;
 }
 
 /*
-  FUNKCJA: computeDistanceKm
-  --------------------------
-  Liczy dystans w kilometrach między dwoma punktami (lat1, lon1) i (lat2, lon2)
-  używając wzoru Haversine. Zwraca liczbę w km.
+  -------------------------------
+  4. computeDistanceKm (Haversine)
+  -------------------------------
 */
 function computeDistanceKm(lat1, lon1, lat2, lon2) {
-  const R = 6371; // promień Ziemi w km
+  const R = 6371; // km
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
   const a = 
     Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
     Math.sin(dLon/2) * Math.sin(dLon/2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   return R * c;
 }
 
 /*
-  FUNKCJA: updateTable
-  --------------------
-  1) Pobiera CSV
-  2) Parsuje
-  3) Filtruje do linii 3 i 5
-  4) Liczy czas dojazdu do Krakowskiej (bardzo uproszczony!)
-  5) Wyświetla w 2 kolumnach
+  -------------------------------
+  5. updateTable
+  -------------------------------
+  - pobiera CSV via Proxy
+  - parsuje
+  - filtruje linie 3 i 5
+  - liczy czas dojazdu (bardzo orientacyjny)
+  - wyświetla w 2 kolumnach
 */
 async function updateTable() {
   try {
-    const csvText = await fetchCSV();
-    const allRows = parseCSV(csvText);
+    const csvText = await fetchCSVviaProxy();
+    const rows = parseCSV(csvText);
 
-    // UWAGA: W pliku CSV musisz mieć kolumny np.:
-    // "Nazwa_Linii", "Lat", "Lon", ... 
-    // Sprawdź realne nazwy i DOSTOSUJ jeśli są inne!
-
-    // 1. Filtrujemy TYLKO TRAMWAJE z linii 3 i 5
-    //    (zakładam, że w "Nazwa_Linii" jest "3" lub "5")
+    // Upewnij się, że w CSV są kolumny "Nazwa_Linii", "Lat", "Lon" (lub podobne).
     const filtered3 = [];
     const filtered5 = [];
 
-    allRows.forEach(row => {
-      const linia = row["Nazwa_Linii"];  // sprawdź czy w CSV jest "Nazwa_Linii" czy "Linia"
-      const latStr = row["Lat"];        // czy w CSV jest "Lat" czy "Latitude"?
-      const lonStr = row["Lon"];        // czy w CSV jest "Lon" czy "Longitude"?
+    rows.forEach(r => {
+      const linia = r["Nazwa_Linii"]; 
+      const latStr = r["Lat"];
+      const lonStr = r["Lon"];
 
-      if (!linia || !latStr || !lonStr) {
-        return; // pomiń wiersz, bo brakuje danych
-      }
+      if (!linia || !latStr || !lonStr) return; // pomijamy
 
-      // Konwersja do liczb
       const lat = parseFloat(latStr);
       const lon = parseFloat(lonStr);
-      if (isNaN(lat) || isNaN(lon)) {
-        return;
-      }
+      if (isNaN(lat) || isNaN(lon)) return;
 
-      // Liczymy dystans w km do przystanku
       const distKm = computeDistanceKm(lat, lon, STOP_LAT, STOP_LON);
+      const timeMin = Math.round( (distKm / AVERAGE_SPEED_KMH) * 60 );
 
-      // Szybkie wyliczenie czasu (minuty) = (dystans / prędkość) * 60
-      // prędkość w km/h => w km/min mnożymy przez 60
-      const timeMin = (distKm / AVERAGE_SPEED_KMH) * 60;
-      const timeRounded = Math.round(timeMin);
-
-      // Zapisujemy obiekt (np. { linia: 3, time: 5, ... })
       const item = {
         linia: linia,
-        distanceKm: distKm,
-        timeMin: timeRounded
+        timeMin: timeMin
       };
 
-      // Przydzielamy do tablicy 3 lub 5
-      if (linia === "3") {
-        filtered3.push(item);
-      } else if (linia === "5") {
-        filtered5.push(item);
-      }
+      if (linia === "3") filtered3.push(item);
+      else if (linia === "5") filtered5.push(item);
     });
 
-    // 2. Sortujemy rosnąco po czasie dojazdu
+    // Sortujemy po czasie rosnąco
     filtered3.sort((a,b) => a.timeMin - b.timeMin);
     filtered5.sort((a,b) => a.timeMin - b.timeMin);
 
-    // 3. Wyświetlamy w kolumnach
-    fillColumn("line3List", filtered3, "3");
-    fillColumn("line5List", filtered5, "5");
+    fillColumn("line3List", filtered3);
+    fillColumn("line5List", filtered5);
 
-    // 4. Ustawiamy czas ostatniej aktualizacji
+    // Ustawiamy czas ostatniej aktualizacji
     const now = new Date();
-    const hh = String(now.getHours()).padStart(2,'0');
-    const mm = String(now.getMinutes()).padStart(2,'0');
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
     document.getElementById("lastUpdated").textContent = `Ostatnia aktualizacja: ${hh}:${mm}`;
 
-    // Czyścimy ewentualny błąd
     document.getElementById("errorMsg").textContent = "";
   } catch (err) {
     console.error(err);
@@ -263,19 +249,20 @@ async function updateTable() {
 }
 
 /*
-  FUNKCJA: fillColumn
-  -------------------
-  Wypełnia określony kontener (np. #line3List) listą odjazdów
-  w formie "L4 Carlingford ... 2 min" – ale w tym wypadku mamy
-  w obiekcie { linia: "3", timeMin: 7 }.
-
-  W docelowej wersji można np. dodać "kierunek" – ale w CSV go raczej nie ma.
+  -------------------------------
+  6. fillColumn
+  -------------------------------
+  Wypełnia #line3List lub #line5List 
+  listą elementów w formacie:
+    L3 | Kierunek? | X min
+  (Brak prawdziwego kierunku w CSV, 
+   więc pokazujemy "Kierunek?")
 */
-function fillColumn(containerId, items, lineNumber) {
+function fillColumn(containerId, items) {
   const container = document.getElementById(containerId);
   container.innerHTML = "";
 
-  if (items.length === 0) {
+  if (!items || items.length === 0) {
     container.innerHTML = "<p>Brak danych</p>";
     return;
   }
@@ -284,17 +271,14 @@ function fillColumn(containerId, items, lineNumber) {
     const rowDiv = document.createElement("div");
     rowDiv.className = "departure-row";
 
-    // "badge" z numerem linii
     const badgeSpan = document.createElement("span");
     badgeSpan.className = "line-badge";
     badgeSpan.textContent = "L" + item.linia;
 
-    // "kierunek" – w CSV brak, więc zostawiamy np. "Kierunek?"
     const destSpan = document.createElement("span");
     destSpan.className = "destination";
     destSpan.textContent = "Kierunek?"; // brak w CSV
 
-    // Czas dojazdu
     const timeSpan = document.createElement("span");
     timeSpan.className = "time";
     timeSpan.textContent = item.timeMin + " min";
@@ -308,9 +292,10 @@ function fillColumn(containerId, items, lineNumber) {
 }
 
 /*
-  Po załadowaniu strony:
-  - Uruchamiamy updateTable
-  - Odświeżamy co REFRESH_INTERVAL ms
+  -------------------------------
+  7. Start
+  -------------------------------
+  Uruchamiamy update co 5s
 */
 window.addEventListener("DOMContentLoaded", () => {
   updateTable();
