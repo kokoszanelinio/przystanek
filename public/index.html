@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tablica MPK (linie 3 i 5)</title>
+  <style>
+    body {
+      margin: 0; 
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background: #f0f0f0;
+    }
+    .top-bar {
+      background: #444;
+      color: #fff;
+      padding: 10px;
+      font-size: 20px;
+    }
+    .content {
+      display: flex;
+      gap: 20px;
+      padding: 20px;
+    }
+    .column {
+      flex: 1;
+      background: #fff;
+      border-radius: 4px;
+      padding: 10px;
+    }
+    .departure-row {
+      border-bottom: 1px solid #ddd;
+      padding: 6px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .departure-row:last-child {
+      border-bottom: none;
+    }
+    .line-badge {
+      background: #333;
+      color: #fff;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .time {
+      font-weight: bold;
+      min-width: 60px;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div class="top-bar">Tablica tramwajów (linia 3 i 5)</div>
+
+  <div class="content">
+    <div class="column">
+      <h2>Linia 3</h2>
+      <div id="line3"></div>
+    </div>
+    <div class="column">
+      <h2>Linia 5</h2>
+      <div id="line5"></div>
+    </div>
+  </div>
+
+  <script>
+    // Koordynaty przystanku Krakowska
+    const STOP_LAT = 51.0930579;
+    const STOP_LON = 17.0605519;
+    const AVERAGE_SPEED_KMH = 18; // Uproszczona prędkość do obliczeń
+    const REFRESH_INTERVAL = 30000; // Odświeżanie co 30s
+
+    // Funkcja pobierająca tramwaje z /api/trams
+    async function fetchTrams() {
+      try {
+        const resp = await fetch("/api/trams");
+        const data = await resp.json();
+        // data = [{name: "3", type: "tram", x: 51.12, y: 17.06, ...}, ...]
+
+        // Filtrowanie na line3 i line5
+        const line3 = data.filter(item => item.name === "3");
+        const line5 = data.filter(item => item.name === "5");
+
+        // Obliczamy orientacyjny czas do Krakowskiej
+        line3.forEach(item => {
+          item.timeMin = computeTimeMin(item.x, item.y);
+        });
+        line5.forEach(item => {
+          item.timeMin = computeTimeMin(item.x, item.y);
+        });
+
+        // Sortujemy
+        line3.sort((a,b) => a.timeMin - b.timeMin);
+        line5.sort((a,b) => a.timeMin - b.timeMin);
+
+        // Wyświetlamy w kolumnach
+        fillColumn("line3", line3);
+        fillColumn("line5", line5);
+
+      } catch (err) {
+        console.error("Błąd pobierania tramwajów:", err);
+      }
+    }
+
+    // Oblicz prowizoryczny czas (dystans w linii prostej / prędkość)
+    function computeTimeMin(lat, lon) {
+      if (!lat || !lon) return 999;
+      // lat, lon to float, x=51..., y=17...
+      const distKm = haversineDistance(lat, lon, STOP_LAT, STOP_LON);
+      const timeMin = (distKm / AVERAGE_SPEED_KMH) * 60;
+      return Math.round(timeMin);
+    }
+
+    // Wzór Haversine
+    function haversineDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371; // km
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+    function toRad(value) {
+      return value * Math.PI / 180;
+    }
+
+    // Wypełnianie HTML-u w danej kolumnie
+    function fillColumn(containerId, items) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = "";
+
+      if (!items.length) {
+        container.innerHTML = "<p>Brak danych</p>";
+        return;
+      }
+
+      items.forEach(item => {
+        const row = document.createElement("div");
+        row.className = "departure-row";
+
+        const badge = document.createElement("span");
+        badge.className = "line-badge";
+        badge.innerText = "L" + item.name;
+
+        const time = document.createElement("span");
+        time.className = "time";
+        time.innerText = item.timeMin + " min";
+
+        row.appendChild(badge);
+        row.appendChild(time);
+
+        container.appendChild(row);
+      });
+    }
+
+    // Start
+    fetchTrams();
+    setInterval(fetchTrams, REFRESH_INTERVAL);
+  </script>
+
+</body>
+</html>
