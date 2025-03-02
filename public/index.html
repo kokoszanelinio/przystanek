@@ -45,7 +45,7 @@
 </head>
 <body>
 
-<div class="top-bar">Tablica MPK (3, 5 i 114)</div>
+<div class="top-bar">Tablica MPK – linie 3, 5 (przystanek 25002) i 114 (przystanek 25102)</div>
 
 <div class="table-container">
   <table id="mainTable">
@@ -57,60 +57,71 @@
       </tr>
     </thead>
     <tbody>
-      <!-- wypełniamy dynamicznie -->
+      <!-- Wypełniamy dynamicznie -->
     </tbody>
   </table>
 </div>
 
 <script>
-// Koordynaty przystanku Krakowska
-const STOP_LAT = 51.0930579;
-const STOP_LON = 17.0605519;
-const AVERAGE_SPEED_KMH = 18;
-const REFRESH_INTERVAL = 30000;
+// Założone współrzędne przystanków (przykładowe, do zastąpienia rzeczywistymi danymi)
+const STOPS = {
+  "3": { lat: 51.093, lon: 17.061 }, // Przystanek 25002 dla tramwajów 3 i 5
+  "5": { lat: 51.093, lon: 17.061 },
+  "114": { lat: 51.094, lon: 17.062 } // Przystanek 25102 dla autobusu 114
+};
+const AVERAGE_SPEED_KMH = 18; // Średnia prędkość w km/h
+const REFRESH_INTERVAL = 30000; // Odświeżanie co 30 sekund
 
-// 1. Pobieramy z /api/all
+// Pobieramy dane z /api/all
 async function fetchAll() {
   try {
     const resp = await fetch("/api/all");
     if (!resp.ok) throw new Error("HTTP " + resp.status);
     const data = await resp.json();
-    // data: [{name:"3", type:"tram", x:51..., y:17...}, {name:"5",...}, {name:"114",...}]
+    // data: [{name: "3", type: "tram", x: 51..., y: 17...}, {name: "5", ...}, {name: "114", ...}]
 
-    // Policz czas dojazdu
+    // Obliczamy czas dojazdu do odpowiedniego przystanku
     data.forEach(item => {
-      item.timeMin = computeTimeMin(item.x, item.y);
-      // Kierunku brak w JSON, więc dajemy "?" albo coś
-      item.direction = "Brak info";
+      const stop = STOPS[item.name];
+      if (stop) {
+        item.timeMin = computeTimeMin(item.x, item.y, stop.lat, stop.lon);
+      } else {
+        item.timeMin = 999; // Domyślna wartość, jeśli linia nieznana
+      }
+      item.direction = "Brak info"; // API nie dostarcza kierunku
     });
 
-    // Sortujemy rosnąco po timeMin
-    data.sort((a,b) => a.timeMin - b.timeMin);
+    // Filtrujemy pojazdy zbyt daleko (np. > 30 minut)
+    const filteredData = data.filter(item => item.timeMin < 30);
 
-    fillTable(data);
+    // Sortujemy rosnąco po czasie dojazdu
+    filteredData.sort((a, b) => a.timeMin - b.timeMin);
+
+    fillTable(filteredData);
   } catch (err) {
     console.error("Błąd:", err);
   }
 }
 
-function computeTimeMin(lat, lon) {
+// Obliczamy czas dojazdu w minutach
+function computeTimeMin(lat, lon, stopLat, stopLon) {
   if (!lat || !lon) return 999;
-  const dist = haversine(lat, lon, STOP_LAT, STOP_LON);
-  return Math.round( (dist / AVERAGE_SPEED_KMH) * 60 );
+  const dist = haversine(lat, lon, stopLat, stopLon);
+  return Math.round((dist / AVERAGE_SPEED_KMH) * 60);
 }
 
-// Wzór haversine
+// Wzór Haversine do obliczania odległości
 function haversine(lat1, lon1, lat2, lon2) {
-  const R=6371;
-  const dLat = (lat2-lat1)*Math.PI/180;
-  const dLon = (lon2-lon1)*Math.PI/180;
-  const a = Math.sin(dLat/2)**2 +
-            Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
-            Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const R = 6371; // Promień Ziemi w km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// 2. Wypełniamy tabelę
+// Wypełniamy tabelę
 function fillTable(items) {
   const tbody = document.querySelector("#mainTable tbody");
   tbody.innerHTML = "";
@@ -132,13 +143,13 @@ function fillTable(items) {
     const tdLine = document.createElement("td");
     const badge = document.createElement("span");
     badge.className = "line-badge";
-    badge.innerText = "L" + item.name; 
+    badge.innerText = item.name; // Tylko numer linii, bez "L"
     tdLine.appendChild(badge);
     tr.appendChild(tdLine);
 
     // Kierunek
     const tdDir = document.createElement("td");
-    tdDir.innerText = item.direction; // brak w JSON, dajemy cokolwiek
+    tdDir.innerText = item.direction;
     tr.appendChild(tdDir);
 
     // Odjazd
@@ -150,7 +161,7 @@ function fillTable(items) {
   });
 }
 
-// Start
+// Start i odświeżanie
 fetchAll();
 setInterval(fetchAll, REFRESH_INTERVAL);
 </script>
