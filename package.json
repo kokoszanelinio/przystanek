@@ -1,7 +1,7 @@
 {
-  "name": "mpk-wroclaw-final",
+  "name": "my-mpk-app",
   "version": "1.0.0",
-  "description": "Final code for Wroclaw Opendata tablica",
+  "description": "Tablica odjazdów MPK Wrocław z API CKAN",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
