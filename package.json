@@ -1,7 +1,7 @@
 {
-  "name": "mpk-wroclaw",
+  "name": "mpk-wroclaw-final",
   "version": "1.0.0",
-  "description": "Tablica MPK Wrocław",
+  "description": "Final code for Wroclaw Opendata tablica",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
