@@ -1,80 +1,115 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tablica MPK Wrocław</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-        }
-        .line-badge {
-            display: inline-block;
-            padding: 5px 10px;
-            background: #333;
-            color: #fff;
-            border-radius: 5px;
-            font-weight: bold;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <title>Tablica MPK (3,5,114)</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #f2f2f2; }
+    .line-badge {
+      display: inline-block;
+      padding: 5px 10px;
+      background: #333;
+      color: #fff;
+      border-radius: 5px;
+      font-weight: bold;
+    }
+  </style>
 </head>
 <body>
 
-    <h2>Tablica MPK Wrocław</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>Linia</th>
-                <th>Kierunek</th>
-                <th>Odjazd</th>
-            </tr>
-        </thead>
-        <tbody id="timetable">
-            <tr><td colspan="3">Ładowanie danych...</td></tr>
-        </tbody>
-    </table>
+  <h2>Tablica MPK (3, 5 i 114)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Linia</th>
+        <th>Typ</th>
+        <th>Odjazd</th>
+      </tr>
+    </thead>
+    <tbody id="timetable">
+      <tr><td colspan="3">Ładowanie...</td></tr>
+    </tbody>
+  </table>
 
-    <script>
-        async function fetchData() {
-            try {
-                const response = await fetch('/api/trams');
-                const data = await response.json();
+  <script>
+    // Koordy przystanku Krakowska
+    const STOP_LAT = 51.0930579;
+    const STOP_LON = 17.0605519;
+    const AVG_SPEED = 18; // km/h
 
-                const tableBody = document.getElementById('timetable');
-                tableBody.innerHTML = '';
+    // Haversine do liczenia odległości
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371; // promień Ziemi w km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1 * Math.PI / 180) *
+        Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) ** 2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
 
-                data.forEach(item => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td><span class="line-badge">L${item.name}</span></td>
-                        <td>${item.type === 'tram' ? 'Tramwaj' : 'Autobus'}</td>
-                        <td>${Math.floor(Math.random() * 15) + 1} min</td>
-                    `;
-                    tableBody.appendChild(row);
-                });
+    function computeTimeMin(lat, lon) {
+      if (!lat || !lon) return 999;
+      const distKm = haversine(lat, lon, STOP_LAT, STOP_LON);
+      return Math.round((distKm / AVG_SPEED) * 60);
+    }
 
-            } catch (error) {
-                console.error('Błąd pobierania danych:', error);
-                document.getElementById('timetable').innerHTML = '<tr><td colspan="3">Błąd ładowania danych</td></tr>';
-            }
+    async function loadData() {
+      try {
+        const resp = await fetch("/api/all");
+        const data = await resp.json();
+
+        const tableBody = document.getElementById("timetable");
+        tableBody.innerHTML = "";
+
+        // Liczymy czas do Krakowskiej i sortujemy
+        data.forEach(item => {
+          item.timeMin = computeTimeMin(item.lat, item.lon);
+        });
+        // Sort rosnąco
+        data.sort((a,b) => a.timeMin - b.timeMin);
+
+        if(!data.length) {
+          tableBody.innerHTML = "<tr><td colspan='3'>Brak pojazdów linii 3,5,114</td></tr>";
+          return;
         }
 
-        fetchData();
-        setInterval(fetchData, 30000); // Odświeżanie co 30 sekund
-    </script>
+        data.forEach(vehicle => {
+          const tr = document.createElement("tr");
+
+          // Kolumna: Linia
+          const tdLine = document.createElement("td");
+          tdLine.innerHTML = `<span class="line-badge">L${vehicle.line}</span>`;
+
+          // Kolumna: Typ
+          const tdType = document.createElement("td");
+          tdType.textContent = (vehicle.type === "tram") ? "Tramwaj" : "Autobus";
+
+          // Kolumna: Odjazd (czas)
+          const tdTime = document.createElement("td");
+          tdTime.textContent = vehicle.timeMin + " min";
+
+          tr.appendChild(tdLine);
+          tr.appendChild(tdType);
+          tr.appendChild(tdTime);
+
+          tableBody.appendChild(tr);
+        });
+      } catch (err) {
+        console.error("Błąd:", err);
+        document.getElementById("timetable").innerHTML = "<tr><td colspan='3'>Błąd ładowania danych</td></tr>";
+      }
+    }
+
+    loadData();
+    setInterval(loadData, 30000); // odświeżanie co 30s
+  </script>
 
 </body>
 </html>
