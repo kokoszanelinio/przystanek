@@ -2,60 +2,75 @@
 <html lang="pl">
 <head>
   <meta charset="UTF-8">
-  <title>CKAN DataStore - Tablica</title>
+  <title>Tablica MPK (Open Data)</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { border: 1px solid #ddd; padding: 8px; }
-    th { background: #f2f2f2; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 10px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+    }
+    th {
+      background: #f2f2f2;
+    }
   </style>
 </head>
 <body>
-  <h2>Tablica odjazdów (CKAN DataStore)</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Linia</th>
-        <th>Kierunek</th>
-        <th>Odjazd</th>
-      </tr>
-    </thead>
-    <tbody id="timetable">
-      <tr><td colspan="3">Ładowanie...</td></tr>
-    </tbody>
-  </table>
 
-  <script>
-    async function loadArrivals() {
-      try {
-        const resp = await fetch("/api/arrivals");
-        const data = await resp.json();
+<h2>Tablica MPK – Dane z Wrocław Open Data</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Linia</th>
+      <th>Kierunek</th>
+      <th>Odjazd</th>
+    </tr>
+  </thead>
+  <tbody id="arrivalTable">
+    <tr><td colspan="3">Ładowanie danych...</td></tr>
+  </tbody>
+</table>
 
-        const tbl = document.getElementById("timetable");
-        tbl.innerHTML = "";
+<script>
+async function loadData() {
+  try {
+    const resp = await fetch("/api/arrivals");
+    const data = await resp.json();
 
-        if (!Array.isArray(data) || !data.length) {
-          tbl.innerHTML = "<tr><td colspan='3'>Brak danych</td></tr>";
-          return;
-        }
+    const table = document.getElementById("arrivalTable");
+    table.innerHTML = "";
 
-        data.forEach(item => {
-          const tr = document.createElement("tr");
-          tr.innerHTML = `
-            <td>${item.linia}</td>
-            <td>${item.kierunek}</td>
-            <td>${item.odjazd}</td>
-          `;
-          tbl.appendChild(tr);
-        });
-      } catch (err) {
-        console.error("Błąd:", err);
-        document.getElementById("timetable").innerHTML = "<tr><td colspan='3'>Błąd ładowania</td></tr>";
-      }
+    if (!Array.isArray(data) || data.length === 0) {
+      table.innerHTML = "<tr><td colspan='3'>Brak danych</td></tr>";
+      return;
     }
 
-    loadArrivals();
-    setInterval(loadArrivals, 30000); // odśwież co 30s
-  </script>
+    data.forEach(item => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${item.linia}</td>
+        <td>${item.kierunek}</td>
+        <td>${item.odjazd}</td>
+      `;
+      table.appendChild(row);
+    });
+  } catch (err) {
+    console.error("Błąd:", err);
+    document.getElementById("arrivalTable").innerHTML = "<tr><td colspan='3'>Błąd ładowania</td></tr>";
+  }
+}
+
+loadData();
+// Odświeżaj co 30 sekund
+setInterval(loadData, 30000);
+</script>
+
 </body>
 </html>
